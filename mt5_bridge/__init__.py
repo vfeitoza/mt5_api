@@ -14,6 +14,7 @@ from .protocol import (
     CloseResult,
     HistoryCounts,
     HistoryStats,
+    HistoryDeal,
     CalendarEvent,
 )
 from .timing import (
@@ -40,6 +41,7 @@ __all__ = [
     "CloseResult",
     "HistoryCounts",
     "HistoryStats",
+    "HistoryDeal",
     "CalendarEvent",
     # Timing
     "TimingData",

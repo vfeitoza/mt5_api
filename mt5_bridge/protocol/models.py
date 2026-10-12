@@ -17,6 +17,7 @@ class Action(Enum):
     GET_SYMBOLS = "GET_SYMBOLS"
     GET_HISTORY = "GET_HISTORY"
     GET_HISTORY_STATS = "GET_HISTORY_STATS"
+    GET_HISTORY_DEALS = "GET_HISTORY_DEALS"
     GET_CALENDAR = "GET_CALENDAR"
     MODIFY_POSITION = "MODIFY_POSITION"
     HEARTBEAT = "HEARTBEAT"
@@ -274,6 +275,38 @@ class HistoryStats:
             losses=int(data.get("losses", 0)),
             trades=int(data.get("trades", 0)),
             last_loss_time=str(data.get("last_loss_time", "")),
+        )
+
+
+@dataclass
+class HistoryDeal:
+    """Fechamento do dia (deal OUT) retornado por GET_HISTORY_DEALS."""
+    ticket: int = 0
+    time: str = ""
+    symbol: str = ""
+    type: str = ""  # BUY/SELL (direção fechada)
+    volume: float = 0.0
+    price: float = 0.0
+    profit: float = 0.0
+    swap: float = 0.0
+    commission: float = 0.0
+    magic: int = 0
+    comment: str = ""
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "HistoryDeal":
+        return cls(
+            ticket=int(data.get("ticket", 0)),
+            time=str(data.get("time", "")),
+            symbol=str(data.get("symbol", "")),
+            type=str(data.get("type", "")),
+            volume=float(data.get("volume", 0)),
+            price=float(data.get("price", 0)),
+            profit=float(data.get("profit", 0)),
+            swap=float(data.get("swap", 0)),
+            commission=float(data.get("commission", 0)),
+            magic=int(data.get("magic", 0)),
+            comment=str(data.get("comment", "")),
         )
 
 

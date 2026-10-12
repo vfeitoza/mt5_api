@@ -7,6 +7,7 @@ from pathlib import Path
 from mt5_bridge import MT5Bridge
 from core.config import load_config
 from core.engine import Engine
+from core.dashboard import DashboardServer, set_dashboard_refs, record_signal, record_llm, record_trade
 
 def setup_logging(level: str):
     logging.basicConfig(
@@ -112,6 +113,16 @@ async def main():
     bridge = MT5Bridge(host=cfg.bridge.host, port=cfg.bridge.port)
     await bridge.start()
     log.info(f"Bridge escutando {cfg.bridge.host}:{cfg.bridge.port} — aguardando EA conectar")
+
+    # Dashboard 5556 — profissional, polling, gráficos
+    dashboard = DashboardServer(host=cfg.dashboard.host, port=cfg.dashboard.port)
+    if cfg.dashboard.enabled:
+        try:
+            await dashboard.start()
+        except Exception as e:
+            log.warning(f"Dashboard não subiu em {cfg.dashboard.port}: {e}")
+    else:
+        log.info("Dashboard desabilitado (dashboard.enabled=false)")
     try:
         await bridge.wait_for_connection(timeout=120)
     except TimeoutError:
@@ -121,6 +132,8 @@ async def main():
     log.info("EA conectado!")
 
     engine = Engine(bridge, cfg)
+    # injetar refs para dashboard
+    set_dashboard_refs(engine=engine, bridge=bridge, config=cfg)
 
     # graceful shutdown
     stop = asyncio.Event()
@@ -146,6 +159,10 @@ async def main():
     try:
         await task
     except asyncio.CancelledError:
+        pass
+    try:
+        await dashboard.stop()
+    except Exception:
         pass
     await bridge.stop()
     log.info("Bot parado.")

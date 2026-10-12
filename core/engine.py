@@ -106,6 +106,12 @@ class Engine:
                 continue
 
             logger.info(f"[{strat.name}] sinal {signal.direction} entry {signal.entry:.2f} SL {signal.sl:.2f} TP {signal.tp:.2f} | {signal.meta}")
+            # hook dashboard: último sinal
+            try:
+                from core.dashboard import record_signal as _record_signal
+                _record_signal(strat.name, signal)
+            except Exception:
+                pass
 
             # 4) LLM gate — passa evento próximo se houver
             news_title = cal_msg or ""
@@ -125,6 +131,11 @@ class Engine:
                 news_title=news_title,
             )
             logger.info(f"[{strat.name}] LLM aprovado={approved} motivo={motivo}")
+            try:
+                from core.dashboard import record_llm as _record_llm
+                _record_llm(strat.name, approved, motivo)
+            except Exception:
+                pass
             if not approved:
                 continue
 
@@ -163,6 +174,11 @@ class Engine:
                 else:
                     res = await self.bridge.sell(strat.symbol, vol, stop_loss=signal.sl, take_profit=signal.tp, magic=strat.magic, comment=strat.name[:10])
                 logger.info(f"[{strat.name}] ordem executada ticket={res.ticket} price={res.price_executed}")
+                try:
+                    from core.dashboard import record_trade as _record_trade
+                    _record_trade(strat.name, signal.direction, res.ticket, res.price_executed, vol, signal.sl, signal.tp)
+                except Exception:
+                    pass
             except Exception as e:
                 logger.error(f"[{strat.name}] ordem falhou: {e}")
 

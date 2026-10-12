@@ -295,6 +295,8 @@ void HandleMessage(string json)
         response = HandleGetHistory(requestId, params);
     else if(action == "GET_HISTORY_STATS")
         response = HandleGetHistoryStats(requestId, params);
+    else if(action == "GET_HISTORY_DEALS")
+        response = HandleGetHistoryDeals(requestId, params);
     else if(action == "GET_CALENDAR")
         response = HandleGetCalendar(requestId, params);
     else if(action == "MODIFY_POSITION")
@@ -632,6 +634,48 @@ string HandleGetHistoryStats(string requestId, string params)
     }
     string lastStr = (lastLossTime>0) ? TimeToString(lastLossTime, TIME_DATE|TIME_SECONDS) : "";
     string data = StringFormat("{\"profit\":%.2f,\"wins\":%d,\"losses\":%d,\"trades\":%d,\"last_loss_time\":\"%s\"}", profit, wins, losses, trades, lastStr);
+    return BuildSuccessResponse(requestId, data);
+}
+
+//+------------------------------------------------------------------+
+//| Handle GET_HISTORY_DEALS — lista deals OUT do dia por magic        |
+//+------------------------------------------------------------------+
+string HandleGetHistoryDeals(string requestId, string params)
+{
+    int magic = (int)GetJsonDouble(params, "magic");
+    datetime now = TimeCurrent();
+    datetime dayStart = now - (now % 86400);
+    if(!HistorySelect(dayStart, now))
+        return BuildErrorResponse(requestId, GetLastError(), "HistorySelect failed");
+    int total = HistoryDealsTotal();
+    string dealsJson="[";
+    bool first=true;
+    for(int i=0;i<total;i++)
+    {
+        ulong ticket = HistoryDealGetTicket(i);
+        if(ticket==0) continue;
+        if(magic!=0 && (long)HistoryDealGetInteger(ticket, DEAL_MAGIC)!=magic) continue;
+        if((long)HistoryDealGetInteger(ticket, DEAL_ENTRY)!=DEAL_ENTRY_OUT) continue;
+        double profit = HistoryDealGetDouble(ticket, DEAL_PROFIT);
+        double swap = HistoryDealGetDouble(ticket, DEAL_SWAP);
+        double comm = HistoryDealGetDouble(ticket, DEAL_COMMISSION);
+        double price = HistoryDealGetDouble(ticket, DEAL_PRICE);
+        double vol = HistoryDealGetDouble(ticket, DEAL_VOLUME);
+        string sym = HistoryDealGetString(ticket, DEAL_SYMBOL);
+        long dtype = HistoryDealGetInteger(ticket, DEAL_TYPE); // 0 BUY 1 SELL
+        datetime dt = (datetime)HistoryDealGetInteger(ticket, DEAL_TIME);
+        long dmagic = HistoryDealGetInteger(ticket, DEAL_MAGIC);
+        string comment = HistoryDealGetString(ticket, DEAL_COMMENT);
+        StringReplace(comment,"\"","\\\"");
+        StringReplace(sym,"\"","\\\"");
+        string dtypeStr = (dtype==DEAL_TYPE_BUY) ? "BUY" : "SELL";
+        if(!first) dealsJson+=",";
+        first=false;
+        dealsJson+=StringFormat("{\"ticket\":%d,\"time\":\"%s\",\"symbol\":\"%s\",\"type\":\"%s\",\"volume\":%.2f,\"price\":%.5f,\"profit\":%.2f,\"swap\":%.2f,\"commission\":%.2f,\"magic\":%d,\"comment\":\"%s\"}",
+            ticket, TimeToString(dt, TIME_DATE|TIME_SECONDS), sym, dtypeStr, vol, price, profit, swap, comm, (int)dmagic, comment);
+    }
+    dealsJson+="]";
+    string data="{\"deals\":"+dealsJson+"}";
     return BuildSuccessResponse(requestId, data);
 }
 

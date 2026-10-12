@@ -18,6 +18,7 @@ from ..protocol import (
     CloseResult,
     HistoryCounts,
     HistoryStats,
+    HistoryDeal,
     CalendarEvent,
 )
 from ..timing import (
@@ -246,6 +247,12 @@ class MT5Bridge:
         except Exception:
             counts = await self.get_history_counts(magic=magic)
             return HistoryStats(profit=0.0, wins=0, losses=counts.losses, trades=counts.trades)
+
+    async def get_history_deals(self, magic: int = 0) -> list[HistoryDeal]:
+        """Get today's closing deals filtered by magic (0 = all)."""
+        data = await self._send_command(Action.GET_HISTORY_DEALS, {"magic": magic})
+        deals = data.get("deals", [])
+        return [HistoryDeal.from_dict(d) for d in deals]
 
     async def get_calendar(self, hours_ahead: int = 24) -> list[CalendarEvent]:
         """Get economic calendar events (High/Medium impact)."""

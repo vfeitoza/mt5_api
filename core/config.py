@@ -42,8 +42,15 @@ class BridgeConfig(BaseModel):
     port: int = 5555
 
 
+class DashboardConfig(BaseModel):
+    enabled: bool = True
+    host: str = "0.0.0.0"
+    port: int = 5556
+
+
 class AppConfig(BaseModel):
     bridge: BridgeConfig = Field(default_factory=BridgeConfig)
+    dashboard: DashboardConfig = Field(default_factory=DashboardConfig)
     llm: LLMConfig = Field(default_factory=LLMConfig)
     calendar: CalendarConfig = Field(default_factory=CalendarConfig)
     strategies: dict[str, StrategyConfig] = Field(default_factory=dict)
