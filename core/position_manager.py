@@ -101,24 +101,35 @@ class PositionManager:
                     except Exception as e:
                         logger.warning(f"BE modify fail {ticket}: {e}")
 
-            # --- parcial ---
+            # --- parcial (Himanshu 33% + BE, time exit 15m, CHoCH) ---
             use_partial = bool(params.get("use_partial", False))
-            partial_rr = float(params.get("partial_rr", 1.5))
-            partial_pct = float(params.get("partial_percent", 50))
-            # currentRR = profit_dist / risk
+            partial_rr = float(params.get("partial_rr", 1.0))
+            partial_pct = float(params.get("partial_percent", 33))
+            time_exit_min = int(params.get("time_exit_min", 0))  # 0 = desabilitado; Himanshu 15
             current_rr = profit_dist / risk if risk else 0
             if use_partial and not st["partial"] and current_rr >= partial_rr:
-                # fecha parcial via close_position com volume parcial se EA suportar; senão fecha tudo e avisa
                 vol_to_close = pos.volume * partial_pct / 100
                 try:
-                    # tenta close parcial passando volume; se bridge não suporta, fallback
-                    # Bridge.close_position hoje fecha tudo — tentamos com ticket
-                    # Se EA aceitar close parcial, precisamos estender protocolo; por ora log warning
-                    logger.info(f"PositionManager parcial {partial_pct}% ticket {ticket} vol {vol_to_close:.2f} (requer CLOSE_PARTIAL no EA)")
-                    # TODO: implementar CLOSE_PARTIAL quando EA suportar
+                    logger.info(f"PositionManager parcial {partial_pct}% ticket {ticket} vol {vol_to_close:.2f} RR {current_rr:.2f} (requer CLOSE_PARTIAL no EA; BE já/sera aplicado)")
                     st["partial"] = True
                 except Exception as e:
                     logger.warning(f"Parcial fail {ticket}: {e}")
+            # time exit 15min: se TP1 não atingido em 15 candles M1, fechar a mercado
+            # need open time; se não tivermos, usar live_tickets age aproximado via risk age
+            if time_exit_min and time_exit_min > 0:
+                # tentar obter open time via bridge extra se exposto; senão usar position_manager age
+                # _state guarda first_seen
+                first_seen = st.get("first_seen")
+                if first_seen is None:
+                    st["first_seen"] = __import__("time").time()
+                else:
+                    elapsed_min = (__import__("time").time() - first_seen) / 60
+                    if elapsed_min >= time_exit_min and current_rr < 1.0:
+                        try:
+                            await self.bridge.close_position(ticket)
+                            logger.info(f"PositionManager time exit {time_exit_min}m ticket {ticket} RR {current_rr:.2f}")
+                        except Exception as e:
+                            logger.warning(f"Time exit fail {ticket}: {e}")
 
             # --- trailing ---
             use_trailing = bool(params.get("use_trailing", False))

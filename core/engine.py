@@ -113,24 +113,32 @@ class Engine:
             except Exception:
                 pass
 
-            # 4) LLM gate — passa evento próximo se houver
-            news_title = cal_msg or ""
-            # se não bloqueado mas há evento próximo, buscar título
-            if not news_title:
-                try:
-                    evs = await self.calendar.get_events()
-                    if evs:
-                        news_title = f"{evs[0].title} ({evs[0].impact})"
-                except Exception:
-                    pass
-            approved, motivo = await self.llm.approve(
-                symbol=strat.symbol,
-                direction=signal.direction,
-                price=signal.entry,
-                bos_info=signal.meta,
-                news_title=news_title,
-            )
-            logger.info(f"[{strat.name}] LLM aprovado={approved} motivo={motivo}")
+            # 4) LLM gate — facultativo por strat (scalp_himanshu use_llm false = direto)
+            use_llm = bool(sc.params.get("use_llm", True)) if isinstance(sc.params, dict) else True
+            # compat: alguns EAs usam use_llm_gate
+            if "use_llm_gate" in sc.params:
+                use_llm = bool(sc.params["use_llm_gate"])
+            # scalp_himanshu expõe params.use_llm já; champion/scalp default true
+            if strat.name == "scalp_himanshu" and not use_llm:
+                approved, motivo = True, "LLM desabilitado (scalp_himanshu use_llm=false)"
+                logger.info(f"[{strat.name}] LLM skip (use_llm=false) → aprovado")
+            else:
+                news_title = cal_msg or ""
+                if not news_title:
+                    try:
+                        evs = await self.calendar.get_events()
+                        if evs:
+                            news_title = f"{evs[0].title} ({evs[0].impact})"
+                    except Exception:
+                        pass
+                approved, motivo = await self.llm.approve(
+                    symbol=strat.symbol,
+                    direction=signal.direction,
+                    price=signal.entry,
+                    bos_info=signal.meta,
+                    news_title=news_title,
+                )
+                logger.info(f"[{strat.name}] LLM aprovado={approved} motivo={motivo}")
             try:
                 from core.dashboard import record_llm as _record_llm
                 _record_llm(strat.name, approved, motivo)
