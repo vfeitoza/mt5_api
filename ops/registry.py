@@ -16,6 +16,14 @@ def get_strategies(app_config) -> list[BaseStrategy]:
         from .scalp import ScalpM1Strategy as _Scalp
     except Exception:
         _Scalp = None  # type: ignore
+    try:
+        from .daytrade_fx import DaytradeFxStrategy as _DaytradeFx
+    except Exception:
+        _DaytradeFx = None  # type: ignore
+    try:
+        from .swing_fx import SwingFxStrategy as _SwingFx
+    except Exception:
+        _SwingFx = None  # type: ignore
 
     # mapa nome -> classe
     known: dict[str, type[BaseStrategy]] = {
@@ -26,6 +34,10 @@ def get_strategies(app_config) -> list[BaseStrategy]:
         known["champion"] = _Champion
     if _Scalp is not None:
         known["scalp_m1"] = _Scalp
+    if _DaytradeFx is not None:
+        known["daytrade_fx"] = _DaytradeFx
+    if _SwingFx is not None:
+        known["swing_fx"] = _SwingFx
 
     out: list[BaseStrategy] = []
     for name, sc in app_config.strategies.items():

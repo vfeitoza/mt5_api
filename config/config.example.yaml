@@ -185,6 +185,71 @@ strategies:
       trailing_step: 1
       time_exit_min: 0
 
+  daytrade_fx:  # FX Daytrade M15 Killzone + London Breakout — EURUSD/USDJPY/GBPUSD (AUDUSD/EURJPY), payroll NFP NO_TRADE, LLM ativo
+    enabled: true
+    symbol: "EURUSD"
+    timeframe: "M15"
+    magic: 102015
+    volume: 0.03
+    max_trades_day: 10
+    max_losses_day: 99
+    params:
+      symbols: ["EURUSD", "USDJPY", "GBPUSD"]
+      use_llm: true
+      spread_max_pips: 1.5
+      adx_min: 18
+      news_before: 20
+      news_after: 20
+      news_include_moderate: false
+      show_score_log: true
+      min_score: 6
+      rr: 2.0
+      sl_atr_mult: 1.5
+      ema_fast: 9
+      ema_slow: 21
+      use_breakeven: true
+      be_activation_mult: 0.8
+      be_offset_pips: 3
+      use_trailing: true
+      trailing_mode: "atr"
+      trailing_activation_mult: 1.0
+      trailing_atr_mult: 1.0
+      trailing_distance: 12
+      trailing_step: 3
+
+  swing_fx:  # FX Swing H4 S/D + EMA 50/200 — EURUSD/USDJPY/GBPUSD/AUDUSD/EURJPY/USDCHF, payroll NFP NO_TRADE, LLM ativo
+    enabled: true
+    symbol: "EURUSD"
+    timeframe: "H1"
+    magic: 102016
+    volume: 0.03
+    max_trades_day: 4
+    max_losses_day: 99
+    params:
+      symbols: ["EURUSD", "USDJPY", "GBPUSD"]
+      use_llm: true
+      spread_max_pips: 2.0
+      news_before: 60
+      news_after: 60
+      news_include_moderate: true
+      show_score_log: true
+      min_score: 7
+      rr: 2.8
+      sl_atr_mult: 1.8
+      ema_fast: 9
+      ema_slow: 21
+      cci_period: 14
+      adx_period: 14
+      use_breakeven: true
+      be_activation_mult: 1.0
+      be_offset_pips: 5
+      use_trailing: true
+      trailing_mode: "atr"
+      trailing_activation_mult: 1.5
+      trailing_atr_mult: 1.5
+      trailing_distance: 30
+      trailing_step: 5
+
   champion:  # NEW_CHAMPION 2.40 — fiel ao set xauusd_102001_m5.set (RR 1:4, min_score 12, news 20/20) magic 102011 próprio
     enabled: true
     symbol: "XAUUSD"
