@@ -49,7 +49,7 @@ def _overlap_ok(now_utc: datetime, use_gmt: bool, o_start: int, o_end: int) -> b
 
 class ChampionStrategy(BaseStrategy):
     name = "champion"
-    magic = 102001
+    magic = 102011
     symbol = "XAUUSD"
     timeframe = "M5"
 

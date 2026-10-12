@@ -12,6 +12,10 @@ def get_strategies(app_config) -> list[BaseStrategy]:
         from .champion import ChampionStrategy as _Champion
     except Exception:
         _Champion = None  # type: ignore
+    try:
+        from .scalp import ScalpM1Strategy as _Scalp
+    except Exception:
+        _Scalp = None  # type: ignore
 
     # mapa nome -> classe
     known: dict[str, type[BaseStrategy]] = {
@@ -20,6 +24,8 @@ def get_strategies(app_config) -> list[BaseStrategy]:
     }
     if _Champion is not None:
         known["champion"] = _Champion
+    if _Scalp is not None:
+        known["scalp_m1"] = _Scalp
 
     out: list[BaseStrategy] = []
     for name, sc in app_config.strategies.items():
