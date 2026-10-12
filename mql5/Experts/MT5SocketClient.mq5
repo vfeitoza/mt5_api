@@ -293,6 +293,8 @@ void HandleMessage(string json)
         response = HandleClosePosition(requestId, params);
     else if(action == "GET_HISTORY")
         response = HandleGetHistory(requestId, params);
+    else if(action == "GET_HISTORY_STATS")
+        response = HandleGetHistoryStats(requestId, params);
     else if(action == "GET_CALENDAR")
         response = HandleGetCalendar(requestId, params);
     else if(action == "MODIFY_POSITION")
@@ -505,7 +507,7 @@ string HandleGetPositions(string requestId)
             string posType = (g_position.PositionType() == POSITION_TYPE_BUY) ? "BUY" : "SELL";
 
             positionsJson += StringFormat(
-                "{\"ticket\":%d,\"symbol\":\"%s\",\"type\":\"%s\",\"volume\":%.2f,\"open_price\":%.5f,\"sl\":%.5f,\"tp\":%.5f,\"profit\":%.2f}",
+                "{\"ticket\":%d,\"symbol\":\"%s\",\"type\":\"%s\",\"volume\":%.2f,\"open_price\":%.5f,\"sl\":%.5f,\"tp\":%.5f,\"profit\":%.2f,\"magic\":%d}",
                 g_position.Ticket(),
                 g_position.Symbol(),
                 posType,
@@ -513,7 +515,8 @@ string HandleGetPositions(string requestId)
                 g_position.PriceOpen(),
                 g_position.StopLoss(),
                 g_position.TakeProfit(),
-                g_position.Profit()
+                g_position.Profit(),
+                (int)g_position.Magic()
             );
         }
     }
@@ -601,6 +604,38 @@ string HandleGetHistory(string requestId, string params)
 }
 
 //+------------------------------------------------------------------+
+//| Handle GET_HISTORY_STATS — profit/wins/losses/last_loss by magic |
+//+------------------------------------------------------------------+
+string HandleGetHistoryStats(string requestId, string params)
+{
+    int magic = (int)GetJsonDouble(params, "magic");
+    datetime now = TimeCurrent();
+    datetime dayStart = now - (now % 86400);
+    if(!HistorySelect(dayStart, now))
+        return BuildErrorResponse(requestId, GetLastError(), "HistorySelect failed");
+    int total = HistoryDealsTotal();
+    int trades=0, wins=0, losses=0;
+    double profit=0;
+    datetime lastLossTime=0;
+    double lastLossProfit=0;
+    for(int i=0;i<total;i++)
+    {
+        ulong ticket = HistoryDealGetTicket(i);
+        if(ticket==0) continue;
+        if(magic!=0 && (long)HistoryDealGetInteger(ticket, DEAL_MAGIC)!=magic) continue;
+        if((long)HistoryDealGetInteger(ticket, DEAL_ENTRY)!=DEAL_ENTRY_OUT) continue;
+        double p = HistoryDealGetDouble(ticket, DEAL_PROFIT) + HistoryDealGetDouble(ticket, DEAL_SWAP) + HistoryDealGetDouble(ticket, DEAL_COMMISSION);
+        profit += p;
+        trades++;
+        if(p > 0) wins++;
+        else if(p < 0) { losses++; datetime dt=(datetime)HistoryDealGetInteger(ticket, DEAL_TIME); if(dt>lastLossTime){lastLossTime=dt; lastLossProfit=p;} }
+    }
+    string lastStr = (lastLossTime>0) ? TimeToString(lastLossTime, TIME_DATE|TIME_SECONDS) : "";
+    string data = StringFormat("{\"profit\":%.2f,\"wins\":%d,\"losses\":%d,\"trades\":%d,\"last_loss_time\":\"%s\"}", profit, wins, losses, trades, lastStr);
+    return BuildSuccessResponse(requestId, data);
+}
+
+//+------------------------------------------------------------------+
 //| Handle GET_CALENDAR command — High/Medium USD/XAU today           |
 //+------------------------------------------------------------------+
 string HandleGetCalendar(string requestId, string params)
@@ -629,6 +664,10 @@ string HandleGetCalendar(string requestId, string params)
             // still include US events (code US) — skip others
             if(code!="US") continue;
         }
+        // currency from country (USD for US)
+        string currency = "USD";
+        if(code=="GC") currency="XAU";
+        // also expose country currency via CountryById currency field if needed
         if(!first) eventsJson+=",";
         first=false;
         string imp = (event.importance==CALENDAR_IMPORTANCE_HIGH)?"High":"Medium";
@@ -636,7 +675,7 @@ string HandleGetCalendar(string requestId, string params)
         StringReplace(title,"\"","\\\"");
         string t = TimeToString(values[i].time, TIME_DATE|TIME_SECONDS);
         eventsJson+=StringFormat("{\"time\":\"%s\",\"title\":\"%s\",\"country\":\"%s\",\"currency\":\"%s\",\"impact\":\"%s\"}",
-            t, title, code, code, imp);
+            t, title, code, currency, imp);
     }
     eventsJson+="]";
     string data="{\"events\":"+eventsJson+"}";

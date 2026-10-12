@@ -75,26 +75,40 @@ class CalendarFilter:
                 logger.debug(f"Fallback {url} failed: {e}")
         return []
 
-    async def is_blocked(self) -> tuple[bool, str]:
-        """True if High/Medium event within block_min window."""
+    async def is_blocked(self, block_min: int | None = None, before: int | None = None, after: int | None = None) -> tuple[bool, str]:
+        """True if High/Medium event within block window.
+
+        Suporta janela assimétrica para champion (20/20): before=20 after=20.
+        Se before/after não informados, usa block_min simétrico (global).
+        """
+        b_before = before if before is not None else (block_min if block_min is not None else self.block_min)
+        b_after = after if after is not None else (block_min if block_min is not None else self.block_min)
         events = await self.get_events()
-        # EA already filtered High/Medium USD/XAU. If we have any event -> blocked
-        # Fallback list is also filtered. Treat any event as block (conservative).
+        # EA already filtered High/Medium USD/XAU. If we have any event -> check window
         if not events:
             return False, ""
-        # check time proximity if parsable
         now = datetime.now(timezone.utc)
         for ev in events:
-            # try parse ev.time
-            for fmt in ("%Y.%m.%d %H:%M:%S", "%Y-%m-%d %H:%M:%S", "%m-%d-%Y %I:%M%p"):
+            parsed = False
+            for fmt in ("%Y.%m.%d %H:%M:%S", "%Y-%m-%d %H:%M:%S", "%m-%d-%Y %I:%M%p", "%Y.%m.%d %H:%M", "%Y-%m-%dT%H:%M:%S"):
                 try:
                     t = datetime.strptime(ev.time, fmt).replace(tzinfo=timezone.utc)
                     mins = (t - now).total_seconds() / 60
-                    if -self.block_min <= mins <= self.block_min:
+                    if -b_after <= mins <= b_before:
                         return True, f"{ev.title} ({ev.impact}) em {mins:.0f}min"
+                    parsed = True
                     break
                 except Exception:
                     continue
-            # if unparsable, conservatively block if we have event today
-            return True, f"{ev.title} ({ev.impact}) — horário não parseado, bloqueio conservador"
+            if not parsed:
+                # if unparsable, conservatively block if we have event today
+                return True, f"{ev.title} ({ev.impact}) — horário não parseado, bloqueio conservador"
         return False, ""
+
+    async def is_blocked_for_strategy(self, strategy_name: str, strategy_params: dict) -> tuple[bool, str]:
+        """Janela por estratégia: champion usa news_before/after; demais usam global."""
+        before = strategy_params.get("news_before", strategy_params.get("news_minutes_before"))
+        after = strategy_params.get("news_after", strategy_params.get("news_minutes_after"))
+        if before is not None or after is not None:
+            return await self.is_blocked(before=int(before or self.block_min), after=int(after or self.block_min))
+        return await self.is_blocked()

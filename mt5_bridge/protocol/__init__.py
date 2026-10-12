@@ -15,6 +15,7 @@ from .models import (
     Position,
     CloseResult,
     HistoryCounts,
+    HistoryStats,
     CalendarEvent,
 )
 from .message_handler import (
@@ -38,6 +39,7 @@ __all__ = [
     "Position",
     "CloseResult",
     "HistoryCounts",
+    "HistoryStats",
     "CalendarEvent",
     "serialize_request",
     "parse_response",

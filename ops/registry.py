@@ -7,11 +7,19 @@ def get_strategies(app_config) -> list[BaseStrategy]:
     """Instancia estratégias habilitadas a partir de AppConfig.strategies."""
     from .smc import SMCStrategy
 
+    # lazy import to avoid circular deps
+    try:
+        from .champion import ChampionStrategy as _Champion
+    except Exception:
+        _Champion = None  # type: ignore
+
     # mapa nome -> classe
     known: dict[str, type[BaseStrategy]] = {
         "smc_xau": SMCStrategy,
         # adicione novos aqui: "rsi_div": RSIDivStrategy, etc.
     }
+    if _Champion is not None:
+        known["champion"] = _Champion
 
     out: list[BaseStrategy] = []
     for name, sc in app_config.strategies.items():

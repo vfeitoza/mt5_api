@@ -16,6 +16,7 @@ class Action(Enum):
     CLOSE_POSITION = "CLOSE_POSITION"
     GET_SYMBOLS = "GET_SYMBOLS"
     GET_HISTORY = "GET_HISTORY"
+    GET_HISTORY_STATS = "GET_HISTORY_STATS"
     GET_CALENDAR = "GET_CALENDAR"
     MODIFY_POSITION = "MODIFY_POSITION"
     HEARTBEAT = "HEARTBEAT"
@@ -211,6 +212,7 @@ class Position:
     stop_loss: float
     take_profit: float
     profit: float
+    magic: int = 0
 
     @classmethod
     def from_response_data(cls, data: dict) -> "Position":
@@ -222,7 +224,8 @@ class Position:
             open_price=data.get("open_price", 0.0),
             stop_loss=data.get("sl", 0.0),
             take_profit=data.get("tp", 0.0),
-            profit=data.get("profit", 0.0)
+            profit=data.get("profit", 0.0),
+            magic=int(data.get("magic", 0)),
         )
 
 
@@ -251,6 +254,26 @@ class HistoryCounts:
         return cls(
             trades=int(data.get("trades", 0)),
             losses=int(data.get("losses", 0))
+        )
+
+
+@dataclass
+class HistoryStats:
+    """Daily stats by magic: profit, wins/losses, last loss time."""
+    profit: float = 0.0
+    wins: int = 0
+    losses: int = 0
+    trades: int = 0
+    last_loss_time: str = ""  # "YYYY.MM.DD HH:MM:SS" or ""
+
+    @classmethod
+    def from_response_data(cls, data: dict) -> "HistoryStats":
+        return cls(
+            profit=float(data.get("profit", 0.0)),
+            wins=int(data.get("wins", 0)),
+            losses=int(data.get("losses", 0)),
+            trades=int(data.get("trades", 0)),
+            last_loss_time=str(data.get("last_loss_time", "")),
         )
 
 

@@ -7,3 +7,6 @@ __pycache__/
 BRANCH_GUIDE
 .env
 config/config.yaml
+
+# Operacionais a serem migrados
+operacionais/

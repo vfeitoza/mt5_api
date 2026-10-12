@@ -37,13 +37,14 @@ class LLMGate:
                 logger.debug(f"LLM cache hit {symbol} {direction}: {ok}")
                 return ok, motivo + " (cache)"
 
+        # Prompt enriquecido para champion: bos_info já traz CCI/MTF/BOS/SR/RR
         prompt = (
-            f"Você é filtro de risco macro para scalper XAUUSD timeframe M5, hold 5-15min.\n"
-            f"Sinal técnico: {direction} {symbol} @ {price:.2f} | {bos_info}\n"
-            f"Evento próximo: {news_title or 'nenhum High/Medium em 30min'}\n"
-            f"Considere DXY, Fed, CPI, payroll recentes se souber.\n"
-            f"Responda APENAS JSON: {{\"aprovado\": true/false, \"motivo\": \"frase curta 10 palavras\"}}\n"
-            f"Aprove apenas se nenhum risco macro High/Medium invalidar scalp de 5-15min."
+            f"Você é filtro macro para scalper XAUUSD M5 hold 5-15min (Champion SMC+CCI).\n"
+            f"Sinal: {direction} {symbol} @ {price:.2f} | {bos_info}\n"
+            f"Evento: {news_title or 'nenhum High/Medium em 20min'}\n"
+            f"Considere DXY, Fed, CPI/payroll e momentum recente.\n"
+            f"Responda ONLY JSON {{\"aprovado\": true/false, \"motivo\": \"curto 10 palavras\"}}.\n"
+            f"Aprove apenas se macro não invalidar scalp curto."
         )
 
         models = [self.model] + self.fallbacks
@@ -60,7 +61,7 @@ class LLMGate:
         return False, f"llm indisponível: {last_err}"
 
     async def _call_one(self, model: str, prompt: str) -> tuple[bool, str, Optional[str]]:
-        import aiohttp
+        import aiohttp, asyncio
         url = f"{self.base_url}/chat/completions"
         headers = {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
         body = {
@@ -70,23 +71,36 @@ class LLMGate:
             "max_tokens": self.max_tokens,
         }
         try:
+            timeout = aiohttp.ClientTimeout(total=self.timeout_s, connect=5)
             async with aiohttp.ClientSession() as s:
-                async with s.post(url, headers=headers, json=body,
-                                  timeout=aiohttp.ClientTimeout(total=self.timeout_s)) as r:
+                async with s.post(url, headers=headers, json=body, timeout=timeout) as r:
                     if r.status != 200:
                         txt = await r.text()
-                        return False, "", f"HTTP {r.status}: {txt[:200]}"
+                        return False, "", f"HTTP {r.status}: {txt[:300]}"
                     data = await r.json()
-                    content = data["choices"][0]["message"]["content"].strip()
+                    try:
+                        content = data["choices"][0]["message"]["content"].strip()
+                    except Exception:
+                        return False, "", f"bad response shape: {str(data)[:300]}"
                     # strip markdown fences if present
                     if content.startswith("```"):
                         content = content.split("```")[1]
                         if content.startswith("json"):
                             content = content[4:]
                         content = content.strip()
-                    obj = json.loads(content)
+                    try:
+                        obj = json.loads(content)
+                    except Exception as je:
+                        # model returned non-JSON (e.g. plain approved)
+                        logger.debug(f"LLM {model} non-JSON content: {content[:200]} err {je}")
+                        return False, "", f"JSON parse fail: {content[:200]}"
                     aprovado = bool(obj.get("aprovado", obj.get("approved", False)))
                     motivo = str(obj.get("motivo", obj.get("reason", "")))[:120]
                     return aprovado, motivo, None
+        except asyncio.TimeoutError as e:
+            return False, "", f"TimeoutError after {self.timeout_s}s ({type(e).__name__}: {e!r})"
         except Exception as e:
-            return False, "", str(e)[:200]
+            msg = str(e).strip() or repr(e)
+            if not msg or msg == "''":
+                msg = f"{type(e).__name__}: {e!r}"
+            return False, "", msg[:400]
