@@ -291,6 +291,12 @@ void HandleMessage(string json)
         response = HandleGetPositions(requestId);
     else if(action == "CLOSE_POSITION")
         response = HandleClosePosition(requestId, params);
+    else if(action == "GET_HISTORY")
+        response = HandleGetHistory(requestId, params);
+    else if(action == "GET_CALENDAR")
+        response = HandleGetCalendar(requestId, params);
+    else if(action == "MODIFY_POSITION")
+        response = HandleModifyPosition(requestId, params);
     else if(action == "HEARTBEAT")
         response = HandleHeartbeat(requestId);
     else if(action == "GET_SYMBOLS")
@@ -562,6 +568,98 @@ string HandleHeartbeat(string requestId)
     );
 
     return BuildSuccessResponse(requestId, data);
+}
+
+//+------------------------------------------------------------------+
+//| Handle GET_HISTORY command — daily counts filtered by magic        |
+//+------------------------------------------------------------------+
+string HandleGetHistory(string requestId, string params)
+{
+    int magic = (int)GetJsonDouble(params, "magic");
+    datetime now = TimeCurrent();
+    datetime dayStart = now - (now % 86400); // midnight broker time
+    // Use server day: HistorySelect from today 00:00 to now
+    if(!HistorySelect(dayStart, now))
+        return BuildErrorResponse(requestId, GetLastError(), "HistorySelect failed");
+
+    int total = HistoryDealsTotal();
+    int trades = 0, losses = 0;
+    for(int i=0;i<total;i++)
+    {
+        ulong ticket = HistoryDealGetTicket(i);
+        if(ticket==0) continue;
+        long dealMagic = HistoryDealGetInteger(ticket, DEAL_MAGIC);
+        if(magic!=0 && dealMagic!=magic) continue;
+        long entry = HistoryDealGetInteger(ticket, DEAL_ENTRY);
+        if(entry!=DEAL_ENTRY_OUT) continue; // only closing deals
+        double profit = HistoryDealGetDouble(ticket, DEAL_PROFIT);
+        trades++;
+        if(profit < 0) losses++;
+    }
+    string data = StringFormat("{\"trades\":%d,\"losses\":%d}", trades, losses);
+    return BuildSuccessResponse(requestId, data);
+}
+
+//+------------------------------------------------------------------+
+//| Handle GET_CALENDAR command — High/Medium USD/XAU today           |
+//+------------------------------------------------------------------+
+string HandleGetCalendar(string requestId, string params)
+{
+    int hoursAhead = (int)GetJsonDouble(params, "hours_ahead");
+    if(hoursAhead<=0) hoursAhead=24;
+    datetime from = TimeCurrent();
+    datetime to = from + hoursAhead*3600;
+
+    MqlCalendarValue values[];
+    // Empty country/currency filter: fetch all, filter in loop
+    int count = CalendarValueHistory(values, from, to, NULL, NULL);
+    string eventsJson="[";
+    bool first=true;
+    for(int i=0;i<count;i++)
+    {
+        MqlCalendarEvent event;
+        if(!CalendarEventById(values[i].event_id, event)) continue;
+        if(event.importance!=CALENDAR_IMPORTANCE_HIGH && event.importance!=CALENDAR_IMPORTANCE_MODERATE) continue;
+        MqlCalendarCountry country;
+        if(!CalendarCountryById(event.country_id, country)) continue;
+        string code = country.code;
+        // Filter USD / XAU relevant
+        if(code!="US" && code!="GC" && StringFind(event.name,"Gold")<0 && StringFind(event.name,"XAU")<0)
+        {
+            // still include US events (code US) — skip others
+            if(code!="US") continue;
+        }
+        if(!first) eventsJson+=",";
+        first=false;
+        string imp = (event.importance==CALENDAR_IMPORTANCE_HIGH)?"High":"Medium";
+        string title = event.name;
+        StringReplace(title,"\"","\\\"");
+        string t = TimeToString(values[i].time, TIME_DATE|TIME_SECONDS);
+        eventsJson+=StringFormat("{\"time\":\"%s\",\"title\":\"%s\",\"country\":\"%s\",\"currency\":\"%s\",\"impact\":\"%s\"}",
+            t, title, code, code, imp);
+    }
+    eventsJson+="]";
+    string data="{\"events\":"+eventsJson+"}";
+    return BuildSuccessResponse(requestId, data);
+}
+
+//+------------------------------------------------------------------+
+//| Handle MODIFY_POSITION command                                     |
+//+------------------------------------------------------------------+
+string HandleModifyPosition(string requestId, string params)
+{
+    ulong ticket = (ulong)GetJsonDouble(params, "ticket");
+    double sl = GetJsonDouble(params, "sl");
+    double tp = GetJsonDouble(params, "tp");
+    bool hasSL = StringFind(params,"\"sl\"")>=0;
+    bool hasTP = StringFind(params,"\"tp\"")>=0;
+    if(!g_position.SelectByTicket(ticket))
+        return BuildErrorResponse(requestId, GetLastError(), "Position not found");
+    if(!hasSL) sl = g_position.StopLoss();
+    if(!hasTP) tp = g_position.TakeProfit();
+    if(!g_trade.PositionModify(ticket, sl, tp))
+        return BuildErrorResponse(requestId, (int)g_trade.ResultRetcode(), g_trade.ResultRetcodeDescription());
+    return BuildSuccessResponse(requestId, "{\"success\":true}");
 }
 
 //+------------------------------------------------------------------+

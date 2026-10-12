@@ -15,6 +15,9 @@ class Action(Enum):
     GET_POSITIONS = "GET_POSITIONS"
     CLOSE_POSITION = "CLOSE_POSITION"
     GET_SYMBOLS = "GET_SYMBOLS"
+    GET_HISTORY = "GET_HISTORY"
+    GET_CALENDAR = "GET_CALENDAR"
+    MODIFY_POSITION = "MODIFY_POSITION"
     HEARTBEAT = "HEARTBEAT"
 
 
@@ -234,4 +237,44 @@ class CloseResult:
         return cls(
             close_price=data.get("close_price", 0.0),
             profit=data.get("profit", 0.0)
+        )
+
+
+@dataclass
+class HistoryCounts:
+    """Daily trade/loss counts filtered by magic."""
+    trades: int = 0
+    losses: int = 0
+
+    @classmethod
+    def from_response_data(cls, data: dict) -> "HistoryCounts":
+        return cls(
+            trades=int(data.get("trades", 0)),
+            losses=int(data.get("losses", 0))
+        )
+
+
+@dataclass
+class CalendarEvent:
+    """Economic calendar event from EA."""
+    time: str = ""
+    title: str = ""
+    country: str = ""
+    currency: str = ""
+    impact: str = ""  # High / Medium / Low
+    actual: str = ""
+    forecast: str = ""
+    previous: str = ""
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "CalendarEvent":
+        return cls(
+            time=data.get("time", ""),
+            title=data.get("title", ""),
+            country=data.get("country", ""),
+            currency=data.get("currency", ""),
+            impact=data.get("impact", ""),
+            actual=data.get("actual", ""),
+            forecast=data.get("forecast", ""),
+            previous=data.get("previous", ""),
         )

@@ -6,3 +6,4 @@ __pycache__/
 
 BRANCH_GUIDE
 .env
+config/config.yaml

@@ -16,6 +16,8 @@ from ..protocol import (
     AccountInfo,
     Position,
     CloseResult,
+    HistoryCounts,
+    CalendarEvent,
 )
 from ..timing import (
     TimingCollector,
@@ -224,6 +226,22 @@ class MT5Bridge:
         data = await self._send_command(Action.CLOSE_POSITION, {"ticket": ticket})
         return CloseResult.from_response_data(data)
 
+    async def get_symbols(self) -> list[str]:
+        """Get all tradeable symbols from Market Watch."""
+        data = await self._send_command(Action.GET_SYMBOLS, {})
+        return data.get("symbols", [])
+
+    async def get_history_counts(self, magic: int = 0) -> HistoryCounts:
+        """Get today's trade/loss counts filtered by magic (0 = all)."""
+        data = await self._send_command(Action.GET_HISTORY, {"magic": magic})
+        return HistoryCounts.from_response_data(data)
+
+    async def get_calendar(self, hours_ahead: int = 24) -> list[CalendarEvent]:
+        """Get economic calendar events (High/Medium impact)."""
+        data = await self._send_command(Action.GET_CALENDAR, {"hours_ahead": hours_ahead})
+        events = data.get("events", [])
+        return [CalendarEvent.from_dict(e) for e in events]
+
     async def modify_position(
         self,
         ticket: int,
@@ -231,22 +249,13 @@ class MT5Bridge:
         take_profit: Optional[float] = None
     ) -> bool:
         """Modify stop loss and take profit of a position."""
-        params = {"ticket": ticket}
+        params: dict = {"ticket": ticket}
         if stop_loss is not None:
             params["sl"] = stop_loss
         if take_profit is not None:
             params["tp"] = take_profit
-
-        data = await self._send_command(Action.TRADE, {
-            "action": "MODIFY",
-            **params
-        })
+        data = await self._send_command(Action.MODIFY_POSITION, params)
         return data.get("success", False)
-
-    async def get_symbols(self) -> list[str]:
-        """Get all tradeable symbols from Market Watch."""
-        data = await self._send_command(Action.GET_SYMBOLS, {})
-        return data.get("symbols", [])
 
     async def heartbeat(self) -> bool:
         """Send heartbeat to check connection."""

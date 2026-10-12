@@ -12,6 +12,8 @@ from .protocol import (
     AccountInfo,
     Position,
     CloseResult,
+    HistoryCounts,
+    CalendarEvent,
 )
 from .timing import (
     TimingData,
@@ -35,6 +37,8 @@ __all__ = [
     "AccountInfo",
     "Position",
     "CloseResult",
+    "HistoryCounts",
+    "CalendarEvent",
     # Timing
     "TimingData",
     "LatencyStats",

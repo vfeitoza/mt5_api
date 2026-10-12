@@ -1,0 +1,42 @@
+# Copie para config.yaml e preencha SERVTEC_API_KEY (ou export env var)
+bridge:
+  host: "0.0.0.0"
+  port: 5555
+
+llm:
+  base_url: "https://models.servtec.net.br/v1"
+  api_key: ""  # ou export SERVTEC_API_KEY=sua_key
+  model: "gemini-3.8-flash-high"
+  fallbacks:
+    - "deepseek-v4.1-flash"
+    - "glm-5.3-flash"
+    - "gpt-6-luna"
+  timeout_s: 7.0
+  max_tokens: 120
+  temperature: 0.0
+
+calendar:
+  news_block_min: 30
+  hours_ahead: 24
+  use_ea_primary: true
+  fallback_url: "https://nfs.faireconomy.media/ff_calendar_thisweek.json"
+
+loop_interval_s: 5.0
+dry_run: false
+log_level: "INFO"
+
+strategies:
+  smc_xau:
+    enabled: true
+    symbol: "XAUUSD"
+    timeframe: "M5"
+    magic: 61001
+    volume: 0.05
+    max_trades_day: 8
+    max_losses_day: 3
+    params:
+      spread_max: 35
+      bos_lookback: 20
+      bos_expire: 15
+      rr: 1.8
+      sl_pad: 1.2
