@@ -21,7 +21,11 @@ calendar:
   use_ea_primary: true
   fallback_url: "https://nfs.faireconomy.media/ff_calendar_thisweek.json"
 
-loop_interval_s: 5.0
+loop_interval_s: 30.0
+trigger_mode: "hybrid"  # hybrid | close_only | polling
+# hybrid:    BOS só no candle fechado, reteste/MSS intra-candle (recomendado)
+# close_only: tudo só quando fecha M5 (1 check/candle, sem repaint)
+# polling:   legado, checa a cada loop_interval_s mesmo intra-candle
 dry_run: false
 log_level: "INFO"
 

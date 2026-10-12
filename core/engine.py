@@ -93,6 +93,7 @@ class Engine:
 
     async def run_forever(self) -> None:
         interval = self.config.loop_interval_s
+        logger.info(f"Engine loop_interval={interval}s trigger_mode={self.config.trigger_mode}")
         while True:
             try:
                 await self.run_once()

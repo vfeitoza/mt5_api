@@ -47,9 +47,16 @@ class AppConfig(BaseModel):
     llm: LLMConfig = Field(default_factory=LLMConfig)
     calendar: CalendarConfig = Field(default_factory=CalendarConfig)
     strategies: dict[str, StrategyConfig] = Field(default_factory=dict)
-    loop_interval_s: float = 5.0
+    loop_interval_s: float = 30.0
+    trigger_mode: str = "hybrid"  # hybrid | close_only | polling
+    candle_close_only: bool = False  # deprecated alias for trigger_mode=close_only
     dry_run: bool = False
     log_level: str = "INFO"
+
+    def model_post_init(self, __context):
+        # backward compat: candle_close_only -> trigger_mode
+        if self.candle_close_only and self.trigger_mode == "hybrid":
+            object.__setattr__(self, "trigger_mode", "close_only")
 
 
 def load_config(path: str | Path) -> AppConfig:

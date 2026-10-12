@@ -100,6 +100,11 @@ class SMCStrategy(BaseStrategy):
     symbol = "XAUUSD"
     timeframe = "M5"
 
+    def __init__(self, config: dict | None = None):
+        super().__init__(config)
+        self._last_m5_closed_time: str = ""  # deduplica por candle fechado
+        self._cached_bos = None  # (bos_tuple, zone) cache entre loops
+
     async def check_signal(self, bridge) -> Optional[Signal]:
         p = self.config
         tf_m5 = _tf(self.timeframe)
@@ -108,7 +113,8 @@ class SMCStrategy(BaseStrategy):
         bos_lookback = int(p.get("bos_lookback", 20))
         bos_expire = int(p.get("bos_expire", 15))
         rr = float(p.get("rr", 1.8))
-        sl_pad = float(p.get("sl_pad", 1.2))  # USD offset para XAU
+        sl_pad = float(p.get("sl_pad", 1.2))
+        trigger = str(p.get("trigger", p.get("trigger_mode", "hybrid"))).lower()
 
         # 1) spread guard
         try:
@@ -117,12 +123,11 @@ class SMCStrategy(BaseStrategy):
             logger.debug(f"SMC {self.symbol} get_tick fail: {e}")
             return None
         spread_pts = int(round((tick.ask - tick.bid) * 10)) if tick.ask and tick.bid else 999
-        # XAU: 1 ponto = 0.1, spread típico 20-30
         if spread_pts > spread_max:
             logger.debug(f"SMC spread {spread_pts} > {spread_max} skip")
             return None
 
-        # 2) M5 estrutura
+        # 2) M5 estrutura — respeita trigger_mode
         try:
             rates_m5 = await bridge.get_rates(self.symbol, tf_m5, 50)
         except Exception as e:
@@ -131,7 +136,25 @@ class SMCStrategy(BaseStrategy):
         if len(rates_m5) < 30:
             return None
         highs, lows, rev = swing_highs_lows(rates_m5, lookback=30, pivot=2)
-        bos = find_bos(rev, highs, lows, lookback_bos=bos_lookback)
+
+        # trigger_mode: close_only -> só avalia quando M5 fecha; polling -> legado; hybrid -> BOS fechado + reteste 30s
+        if trigger in ("close_only", "hybrid"):
+            closed = rev[-2]  # último fechado
+            closed_time = closed.get("time", "")
+            is_new_candle = closed_time != self._last_m5_closed_time
+            if trigger == "close_only" and not is_new_candle:
+                logger.debug(f"SMC close_only aguardando novo candle M5 (last={self._last_m5_closed_time})")
+                return None
+            # para BOS usa série sem candle em formação (evita repaint)
+            rev_closed = rev[:-1]
+            # recalcula highs/lows sem formando
+            highs_f = [(i, v) for i, v in highs if i < len(rev) - 1]
+            lows_f = [(i, v) for i, v in lows if i < len(rev) - 1]
+            bos = find_bos(rev_closed, highs_f, lows_f, lookback_bos=bos_lookback)
+            if bos and is_new_candle:
+                self._last_m5_closed_time = closed_time
+        else:
+            bos = find_bos(rev, highs, lows, lookback_bos=bos_lookback)
         if not bos:
             return None
         direction, swing_price, bos_idx = bos
