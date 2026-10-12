@@ -50,6 +50,13 @@ class Engine:
         except Exception as e:
             logger.debug(f"PositionManager tick fail: {e}")
 
+        # cache de posições abertas para gate "1 posição por ID+moeda" (EA HasMyPosition)
+        try:
+            _open_positions = await self.bridge.get_positions()
+        except Exception as e:
+            logger.debug(f"Engine get_positions fail (gate 1 pos): {e}")
+            _open_positions = None  # fail-open para checagem; risk já é fail-closed se offline
+
         # 1) calendário — por estratégia (champion 20/20, outros global)
         # não bloqueia global conservador; cada strat checa sua janela
         for strat in self.strategies:
@@ -68,6 +75,26 @@ class Engine:
             if not ok:
                 logger.info(f"[{strat.name}] risk block: {reason}")
                 continue
+
+            # 2b) gate 1 posição por (magic + symbol) — replica HasMyPosition() do EA
+            # se já existe posição aberta com mesmo magic+symbol, não abre nova (apenas 1 por vez)
+            if _open_positions is not None:
+                has_open = False
+                for p in _open_positions:
+                    # Position.magic pode ser 0 se EA antigo; fallback: qualquer posição do mesmo símbolo bloqueia
+                    # mas quando magic exposto, exige match exato magic+symbol
+                    pmagic = getattr(p, "magic", 0) or 0
+                    psym = getattr(p, "symbol", "") or ""
+                    if pmagic and pmagic != strat.magic:
+                        continue
+                    if psym and psym != strat.symbol:
+                        continue
+                    # chegou aqui: magic+symbol coincidem (ou posição sem magic mas mesmo símbolo)
+                    has_open = True
+                    break
+                if has_open:
+                    logger.info(f"[{strat.name}] gate 1 posição: já existe posição aberta {strat.symbol} #{strat.magic} — aguardando fechamento (BE/trailing gerenciando)")
+                    continue
 
             # 3) sinal
             try:
@@ -111,6 +138,24 @@ class Engine:
             if self.config.dry_run:
                 logger.info(f"[{strat.name}] DRY-RUN would {signal.direction} {strat.symbol} {vol} SL {signal.sl:.2f} TP {signal.tp:.2f} magic {strat.magic}")
                 continue
+
+            # re-checar gate 1 posição imediatamente antes de executar (evita corrida: sinal + LLM levou ~7s)
+            try:
+                fresh_positions = await self.bridge.get_positions()
+                for p in fresh_positions:
+                    pmagic = getattr(p, "magic", 0) or 0
+                    psym = getattr(p, "symbol", "") or ""
+                    if pmagic and pmagic != strat.magic:
+                        continue
+                    if psym and psym != strat.symbol:
+                        continue
+                    logger.info(f"[{strat.name}] gate 1 posição (pós-LLM): posição {strat.symbol} #{strat.magic} abriu enquanto LLM avaliava — cancelando ordem")
+                    fresh_positions = None  # sentinel
+                    break
+                if fresh_positions is None:
+                    continue
+            except Exception as e:
+                logger.debug(f"[{strat.name}] gate pós-LLM fail: {e}")
 
             try:
                 if signal.direction == "BUY":
