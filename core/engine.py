@@ -113,14 +113,12 @@ class Engine:
             except Exception:
                 pass
 
-            # 4) LLM gate — facultativo por strat (scalp_himanshu use_llm false = direto)
+            # 4) LLM gate — facultativo por strat (scalp_himanshu/ scalping_huy_5pts use_llm false = direto)
             use_llm = bool(sc.params.get("use_llm", True)) if isinstance(sc.params, dict) else True
-            # compat: alguns EAs usam use_llm_gate
             if "use_llm_gate" in sc.params:
                 use_llm = bool(sc.params["use_llm_gate"])
-            # scalp_himanshu expõe params.use_llm já; champion/scalp default true
-            if strat.name == "scalp_himanshu" and not use_llm:
-                approved, motivo = True, "LLM desabilitado (scalp_himanshu use_llm=false)"
+            if not use_llm:
+                approved, motivo = True, f"LLM desabilitado ({strat.name} use_llm=false)"
                 logger.info(f"[{strat.name}] LLM skip (use_llm=false) → aprovado")
             else:
                 news_title = cal_msg or ""
