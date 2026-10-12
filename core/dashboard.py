@@ -187,6 +187,40 @@ async def api_status(request: web.Request):
         "strategies": len(eng.strategies) if eng and hasattr(eng, "strategies") else 0,
     })
 
+def _readme_for(name: str) -> str | None:
+    # procura ops/README_<name>.md (fallback docs/operacionais)
+    base = Path(__file__).resolve().parents[1]
+    candidates = [
+        base / f"ops/README_{name}.md",
+        base / f"ops/README_{name.replace('scalping_huy_5pts','scalping_huy_5pts')}.md",
+        base / f"docs/operacionais/{name}.md",
+    ]
+    for p in candidates:
+        if p.exists():
+            try:
+                return p.read_text(encoding="utf-8")
+            except Exception:
+                pass
+    # tenta case-insensitive: ops/README_*.md
+    try:
+        for p in (base / "ops").glob("README_*.md"):
+            if p.stem.lower() == f"readme_{name.lower()}":
+                return p.read_text(encoding="utf-8")
+    except Exception:
+        pass
+    return None
+
+
+async def api_readme(request: web.Request):
+    name = request.query.get("name", "").strip()
+    if not name:
+        return web.json_response({"error": "name required"}, status=400)
+    md = _readme_for(name)
+    if md is None:
+        return web.json_response({"name": name, "markdown": None, "html": None, "found": False})
+    return web.json_response({"name": name, "markdown": md, "found": True})
+
+
 async def api_eas(request: web.Request):
     cfg = _dashboard_state.get("config")
     if not cfg:
@@ -198,6 +232,7 @@ async def api_eas(request: web.Request):
         last_llm = _dashboard_state["last_llm"].get(name)
         # history per magic
         hist = await _safe_history(magic=sc.magic)
+        has_readme = _readme_for(name) is not None
         out.append({
             "name": name,
             "enabled": sc.enabled,
@@ -211,6 +246,7 @@ async def api_eas(request: web.Request):
             "last_signal": last_sig,
             "last_llm": last_llm,
             "history": hist,
+            "has_readme": has_readme,
         })
     return web.json_response(out)
 
@@ -392,6 +428,7 @@ DASHBOARD_HTML = r"""<!doctype html>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script src="https://unpkg.com/htmx.org@1.9.12/dist/htmx.min.js"></script>
 <script src="https://unpkg.com/htmx.org@1.9.12/dist/ext/sse.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
 <style>
 :root{--bg:#0b0e14;--card:#111827;--muted:#9ca3af;--accent:#3b82f6;--ok:#10b981;--warn:#f59e0b;--bad:#ef4444;--border:#1f2937}
 *{box-sizing:border-box}body{margin:0;font-family:Inter,system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:#e5e7eb}
@@ -433,6 +470,20 @@ canvas{width:100%!important;height:280px!important}
 .btn{padding:8px 12px;border-radius:10px;border:1px solid var(--border);background:#0b1220;color:#e5e7eb;cursor:pointer;font-size:12px}
 .btn:hover{border-color:#334155}
 .hint{border:1px dashed #334155;background:rgba(59,130,246,.06);border-radius:10px;padding:8px 10px}
+.readme{line-height:1.6}
+.readme h1{font-size:18px;margin:8px 0;color:#e2e8f0}
+.readme h2{font-size:14px;margin:12px 0 6px 0;color:#cbd5e1;border-bottom:1px solid #1f2937;padding-bottom:4px}
+.readme h3{font-size:13px;margin:10px 0 4px 0;color:#cbd5e1}
+.readme p{margin:6px 0;color:#e5e7eb}
+.readme ul,.readme ol{margin:6px 0 6px 18px}
+.readme li{margin:3px 0}
+.readme code{background:#0b1220;border:1px solid #1f2937;border-radius:6px;padding:1px 5px;font-size:11px}
+.readme pre{background:#0b1220;border:1px solid #1f2937;border-radius:10px;padding:10px;overflow:auto}
+.readme pre code{background:transparent;border:0;padding:0}
+.readme table{width:100%;border-collapse:collapse;margin:8px 0}
+.readme th,.readme td{border:1px solid #1f2937;padding:6px 8px;font-size:12px}
+.readme th{background:#0b1220}
+.readme blockquote{border-left:3px solid #334155;margin:6px 0;padding:6px 10px;background:rgba(148,163,184,.08);border-radius:6px;color:#cbd5e1}
 </style>
 </head>
 <body>
@@ -508,6 +559,7 @@ canvas{width:100%!important;height:280px!important}
         <div class="card"><h3>Último sinal / LLM</h3><div id="modal-signal" class="small mono" style="white-space:pre-wrap"></div></div>
       </div>
       <div class="card"><h3>Operações do dia — <span id="modal-ops-title">—</span></h3><div style="overflow:auto;max-height:300px"><table id="modal-trades"><thead><tr><th>Hora</th><th>Dir</th><th>Ticket</th><th>Preço</th><th>Volume</th><th>Preço fech.</th><th>Resultado</th><th>Comentário</th></tr></thead><tbody></tbody></table></div><div class="muted small" id="modal-trades-empty" style="display:none">Nenhuma operação registrada para este EA hoje (nesta sessão do bot). Histórico agregado acima vem do MT5 via magic.</div></div>
+      <div class="card"><h3>📖 Sobre este operacional</h3><div class="readme" id="modal-readme"><span class="muted small">Carregando README…</span></div><div class="muted small" style="margin-top:8px">Fonte: <span class="mono" id="modal-readme-source">ops/README_*.md</span> · Renderizado com <span class="mono">marked</span></div></div>
       <div class="card"><h3>Configuração do EA</h3><div class="muted small" style="margin-bottom:8px">Parâmetros efetivos do <span class="mono">config.yaml</span> para este magic</div><pre id="modal-config" class="mono small" style="white-space:pre-wrap;word-break:break-word;background:#0b1220;border:1px solid #1f2937;border-radius:10px;padding:10px;max-height:360px;overflow:auto"></pre></div>
     </div>
   </div>
@@ -586,6 +638,24 @@ function openEaModal(name){
   const llm = ea.last_llm ? ((ea.last_llm.approved?'✅ Aprovado':'⛔ Bloqueado')+' — '+ea.last_llm.motivo) : 'Sem avaliação LLM ainda';
   $('#modal-signal').textContent = `Sinal:\n${sig}\n\nLLM:\n${llm}`;
   $('#modal-config').textContent = JSON.stringify({symbol:ea.symbol,timeframe:ea.timeframe,magic:ea.magic,volume:ea.volume,max_trades_day:ea.max_trades_day,max_losses_day:ea.max_losses_day,params:ea.params}, null, 2);
+  // README do operacional — antes da config
+  (async()=>{
+    const el=document.getElementById('modal-readme');
+    const src=document.getElementById('modal-readme-source');
+    if(!el) return;
+    el.innerHTML='<span class="muted small">Carregando README…</span>';
+    try{
+      const r=await jget('/api/readme?name='+encodeURIComponent(ea.name));
+      if(r && r.found && r.markdown){
+        if(src) src.textContent='ops/README_'+ea.name+'.md';
+        const html = (window.marked && typeof window.marked.parse==='function') ? window.marked.parse(r.markdown) : '<pre class="mono small" style="white-space:pre-wrap">'+r.markdown.replace(/</g,'&lt;')+'</pre>';
+        el.innerHTML = '<div class="readme">'+html+'</div>';
+      } else {
+        el.innerHTML='<span class="muted small">README não encontrado — crie <span class="mono">ops/README_'+ea.name+'.md</span>. Veja <span class="mono">docs/NOVO_OPERACIONAL.md</span>.</span>';
+        if(src) src.textContent='não encontrado';
+      }
+    }catch(e){ el.innerHTML='<span class="muted small">Falha ao carregar README: '+ (e.message||e) +'</span>'; }
+  })();
   // trades do dia filtrados por EA
   refreshModalTrades();
   $('#ea-modal').classList.add('open');
@@ -836,6 +906,7 @@ def create_app():
         web.get("/", index_handler),
         web.get("/api/status", api_status),
         web.get("/api/eas", api_eas),
+        web.get("/api/readme", api_readme),
         web.get("/api/positions", api_positions),
         web.get("/api/history", api_history),
         web.get("/api/history_deals", api_history_deals),

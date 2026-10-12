@@ -24,6 +24,7 @@ def _collect_watch_files(config_path: str) -> list[Path]:
         d = base / sub
         if d.is_dir():
             candidates.extend(d.rglob("*.py"))
+            candidates.extend(d.rglob("*.md"))
     candidates.append(base / "bot.py")
     cp = Path(config_path)
     if not cp.is_absolute():
