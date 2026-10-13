@@ -25,7 +25,7 @@ class PositionManager:
         return pip_size(symbol)
 
     def _get_state(self, ticket: int) -> dict:
-        return self._state.setdefault(ticket, {"risk": 0.0, "be": False, "partial": False, "last_trailing": 0.0})
+        return self._state.setdefault(ticket, {"risk": 0.0, "be": False, "partial": False, "partial1": False, "partial2": False, "last_trailing": 0.0})
 
     async def tick(self, strategies_cfg: dict) -> None:
         """Verifica todas as posições abertas e aplica BE/parcial/trailing conforme params da strat dona do magic."""
@@ -101,24 +101,38 @@ class PositionManager:
                     except Exception as e:
                         logger.warning(f"BE modify fail {ticket}: {e}")
 
-            # --- parcial (Himanshu 33% + BE, time exit 15m, CHoCH) ---
+            # --- parciais (2 parciais + take final) + time exit ---
             use_partial = bool(params.get("use_partial", False))
+            # compat: se config antigo com 1 parcial, expandir para 2
             partial_rr = float(params.get("partial_rr", 1.0))
             partial_pct = float(params.get("partial_percent", 33))
+            partial1_rr = float(params.get("partial1_rr", partial_rr))
+            partial1_pct = float(params.get("partial1_percent", partial_pct))
+            partial2_rr = float(params.get("partial2_rr", 1.8 if use_partial else 2.0))
+            partial2_pct = float(params.get("partial2_percent", 33))
             time_exit_min = int(params.get("time_exit_min", 0))  # 0 = desabilitado; Himanshu 15
             current_rr = profit_dist / risk if risk else 0
-            if use_partial and not st["partial"] and current_rr >= partial_rr:
-                vol_to_close = pos.volume * partial_pct / 100
-                try:
-                    logger.info(f"PositionManager parcial {partial_pct}% ticket {ticket} vol {vol_to_close:.2f} RR {current_rr:.2f} (requer CLOSE_PARTIAL no EA; BE já/sera aplicado)")
-                    st["partial"] = True
-                except Exception as e:
-                    logger.warning(f"Parcial fail {ticket}: {e}")
-            # time exit 15min: se TP1 não atingido em 15 candles M1, fechar a mercado
-            # need open time; se não tivermos, usar live_tickets age aproximado via risk age
+            if use_partial:
+                # parcial 1
+                if not st.get("partial1") and not st.get("partial") and current_rr >= partial1_rr:
+                    vol_to_close = pos.volume * partial1_pct / 100
+                    try:
+                        logger.info(f"PositionManager parcial1 {partial1_pct}% ticket {ticket} vol {vol_to_close:.2f} RR {current_rr:.2f} @{partial1_rr}R (requer CLOSE_PARTIAL no EA; BE já/será aplicado)")
+                        st["partial1"] = True
+                        st["partial"] = True  # legado
+                    except Exception as e:
+                        logger.warning(f"Parcial1 fail {ticket}: {e}")
+                # parcial 2
+                if not st.get("partial2") and current_rr >= partial2_rr:
+                    # precisa ter feito parcial1 antes (ou single parcial legado)
+                    if st.get("partial1") or st.get("partial"):
+                        vol_to_close2 = pos.volume * partial2_pct / 100
+                        try:
+                            logger.info(f"PositionManager parcial2 {partial2_pct}% ticket {ticket} vol {vol_to_close2:.2f} RR {current_rr:.2f} @{partial2_rr}R")
+                            st["partial2"] = True
+                        except Exception as e:
+                            logger.warning(f"Parcial2 fail {ticket}: {e}")
             if time_exit_min and time_exit_min > 0:
-                # tentar obter open time via bridge extra se exposto; senão usar position_manager age
-                # _state guarda first_seen
                 first_seen = st.get("first_seen")
                 if first_seen is None:
                     st["first_seen"] = __import__("time").time()

@@ -203,13 +203,20 @@ strategies:
       news_include_moderate: false
       show_score_log: true
       min_score: 6
-      rr: 2.0
+      rr: 2.0  # RR do take final; parciais em 1.0R e 2.0R
       sl_atr_mult: 1.5
       ema_fast: 9
       ema_slow: 21
       use_breakeven: true
       be_activation_mult: 0.8
       be_offset_pips: 3
+      use_partial: true
+      partial1_rr: 1.0
+      partial1_percent: 33
+      partial2_rr: 2.0
+      partial2_percent: 33
+      partial_rr: 1.0
+      partial_percent: 33
       use_trailing: true
       trailing_mode: "atr"
       trailing_activation_mult: 1.0
